@@ -464,7 +464,7 @@ describe LogStash::Filters::Rest do
           json => true
           target => 'rest'
           cache => true
-          invalidateCache => true
+          invalidateCache => 'true'
         }
       }
     CONFIG
@@ -478,6 +478,60 @@ describe LogStash::Filters::Rest do
       expect(subject[1]).to include('rest')
 
       expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").twice
+    end
+  end
+  describe 'cache test with invalidation disabled from param' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+          invalidateCache => "[invalidate]"
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text', 'invalidate' => false },
+      { 'message' => 'some text', 'invalidate' => 'false' },
+      { 'message' => 'some text', 'invalidate' => 'false' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").once
+    end
+  end
+  describe 'cache test with invalidation enabled from param' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+          invalidateCache => "[invalidate]"
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text', 'invalidate' => true },
+      { 'message' => 'some text', 'invalidate' => 'true' },
+      { 'message' => 'some text', 'invalidate' => 'true' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").times(3)
     end
   end
   describe 'cache test with expiry time' do

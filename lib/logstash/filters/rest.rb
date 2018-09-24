@@ -136,7 +136,7 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
   config :cacheExpiry, :validate => :number, :default => 3600
 
   # Configures the time to keep the cache alive (in seconds) (default: 3600 seconds)
-  config :invalidateCache, :validate => :boolean, :default => false
+  config :invalidateCache, :validate => :string, :default => false
 
   public
 
@@ -223,7 +223,7 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
 
   private
 
-  def request_http(request)
+  def request_http(request, invalidate)
     if request[2].key?(:body) && @json
       request[2][:body] = LogStash::Json.dump(request[2][:body])
     end
@@ -231,12 +231,12 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
                                     :request => request)
 
     method, url, *request_opts = request
-    
-    response = nil
 
-    if @invalidateCache
+    if invalidate
       @store.unset(url);
     end
+    
+    response = nil
     
     if @cache
       response = @store.get(url);
@@ -321,7 +321,7 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
 
     client_error = nil
     begin
-      code, body = request_http(request)
+      code, body = request_http(request, shouldInvalidateCache(event))
     rescue StandardError => e
       client_error = e
     end
@@ -348,4 +348,14 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
     end
     filter_matched(event)
   end # def filter
+
+  private
+
+  def shouldInvalidateCache(event)
+    if @invalidateCache.is_a? String
+      return @invalidateCache === 'true' || event.get(@invalidateCache) === true || event.get(@invalidateCache) === 'true'
+    else
+      return @invalidateCache === true
+    end
+  end
 end # class LogStash::Filters::Rest
