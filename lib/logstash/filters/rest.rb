@@ -3,6 +3,7 @@ require 'logstash/filters/base'
 require 'logstash/namespace'
 require 'logstash/plugin_mixins/http_client'
 require 'logstash/json'
+require "mini_cache"
 
 # Monkey Patch hsh with a recursive compact and deep freeze
 class Hash
@@ -128,6 +129,15 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
   config :tag_on_rest_failure, :validate => :array, :default => ['_restfailure']
   config :tag_on_json_failure, :validate => :array, :default => ['_jsonparsefailure']
 
+  # Switches caching on/off
+  config :cache, :validate => :boolean, :default => false
+
+  # Configures the time to keep the cache alive (in seconds) (default: 3600 seconds)
+  config :cacheExpiry, :validate => :number, :default => 3600
+
+  # Configures the time to keep the cache alive (in seconds) (default: 3600 seconds)
+  config :invalidateCache, :validate => :boolean, :default => false
+
   public
 
   def register
@@ -137,6 +147,7 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
     ).deep_freeze
     @sprintf_needed = !@sprintf_fields.empty?
     @target = normalize_target(@target).freeze
+    @store = MiniCache::Store.new
   end # def register
 
   private
@@ -220,7 +231,27 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
                                     :request => request)
 
     method, url, *request_opts = request
-    response = client.http(method, url, *request_opts)
+    
+    response = nil
+
+    if @invalidateCache
+      @store.unset(url);
+    end
+    
+    if @cache
+      response = @store.get(url);
+    end
+
+    if response == nil
+      response = client.http(method, url, *request_opts)
+      
+      if @cache
+        @store.set(url, { :body => response.body, :code => response.code }, expires_in: @cacheExpiry)
+      end
+    else
+      response = OpenStruct.new(response)
+    end
+
     [response.code, response.body]
   end
 

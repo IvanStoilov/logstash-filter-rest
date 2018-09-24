@@ -1,5 +1,7 @@
 require 'logstash/devutils/rspec/spec_helper'
 require 'logstash/filters/rest'
+require_relative './spec_helper'
+require 'logstash/filters/sleep'
 
 describe LogStash::Filters::Rest do
   describe 'Set to Rest Filter Get without params' do
@@ -401,6 +403,113 @@ describe LogStash::Filters::Rest do
     sample('message' => 'some text') do
       expect(subject).to_not include('rest')
       expect(subject.get('tags')).to include('_restfailure')
+    end
+  end
+  describe 'cache test' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text' },
+      { 'message' => 'some text' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").once
+    end
+  end
+  describe 'without cache' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text' },
+      { 'message' => 'some text' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").twice
+    end
+  end
+  describe 'cache test with invalidation' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+          invalidateCache => true
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text' },
+      { 'message' => 'some text' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").twice
+    end
+  end
+  describe 'cache test with expiry time' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+          cacheExpiry => 2
+        }
+
+        sleep {
+          time => "1"
+        }
+
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text' },
+      { 'message' => 'some text' },
+      { 'message' => 'some text' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").twice
     end
   end
 end
