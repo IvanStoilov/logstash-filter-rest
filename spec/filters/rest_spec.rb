@@ -430,6 +430,34 @@ describe LogStash::Filters::Rest do
       expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").once
     end
   end
+  describe 'cache test with identic url and different cache key' do
+    let(:config) do <<-CONFIG
+      filter {
+        rest {
+          request => {
+            url => 'http://jsonplaceholder.typicode.com/users/10'
+          }
+          json => true
+          target => 'rest'
+          cache => true
+          cacheKey => "%{key}"
+        }
+      }
+    CONFIG
+    end
+
+    sample([
+      { 'message' => 'some text', 'key' => 'test1' },
+      { 'message' => 'some text', 'key' => 'test1' },
+      { 'message' => 'some text', 'key' => 'test2' }
+    ]) do
+      expect(subject[0]).to include('rest')
+      expect(subject[1]).to include('rest')
+      expect(subject[2]).to include('rest')
+
+      expect(WebMock).to have_requested(:get, "http://jsonplaceholder.typicode.com/users/10").twice
+    end
+  end
   describe 'without cache' do
     let(:config) do <<-CONFIG
       filter {

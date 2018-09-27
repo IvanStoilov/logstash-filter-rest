@@ -137,6 +137,9 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
 
   # Configures the time to keep the cache alive (in seconds) (default: 3600 seconds)
   config :invalidateCache, :validate => :string, :default => false
+ 
+  # A specific cache key to use for this request (default: url)
+  config :cacheKey, :validate => :string, :default => nil
 
   public
 
@@ -233,20 +236,20 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
     method, url, *request_opts = request
 
     if invalidate
-      @store.unset(url);
+      @store.unset(getCacheKey(url));
     end
     
     response = nil
     
     if @cache
-      response = @store.get(url);
+      response = @store.get(getCacheKey(url));
     end
 
     if response == nil
       response = client.http(method, url, *request_opts)
       
       if @cache
-        @store.set(url, { :body => response.body, :code => response.code }, expires_in: @cacheExpiry)
+        @store.set(getCacheKey(url), { :body => response.body, :code => response.code }, expires_in: @cacheExpiry)
       end
     else
       response = OpenStruct.new(response)
@@ -319,6 +322,10 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
                                       :request => request)
     end
 
+    if @cacheKey
+      @cacheKeyReplaced = event.sprintf(@cacheKey)
+    end
+
     client_error = nil
     begin
       code, body = request_http(request, shouldInvalidateCache(event))
@@ -357,5 +364,11 @@ class LogStash::Filters::Rest < LogStash::Filters::Base
     else
       return @invalidateCache === true
     end
+  end
+
+  private
+
+  def getCacheKey(url)
+    @cacheKeyReplaced || url
   end
 end # class LogStash::Filters::Rest
